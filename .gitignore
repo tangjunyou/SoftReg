@@ -17,3 +17,13 @@
 Network Trash Folder
 Temporary Items
 .apdisk
+
+# venv
+.venv/
+# 软著材料输出
+软件著作权申请资料/
+# 测试与上游参考
+测试项目/
+upstream-skill/
+__pycache__/
+*.pyc
