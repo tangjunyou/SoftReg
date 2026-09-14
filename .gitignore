@@ -1,0 +1,19 @@
+# macOS 系统文件
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+.fseventsd
+.AppleDouble
+.LSOverride
+.DocumentRevisions-V100
+.TemporaryItems
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# macOS 网络/卷宗残留
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
