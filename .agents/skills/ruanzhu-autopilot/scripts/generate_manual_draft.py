@@ -19,11 +19,6 @@ def join_items(items: list[str], limit: int = 4) -> str:
     return "、".join(values[:limit])
 
 
-def feature_summary(feature: str, detail: str, software_name: str) -> str:
-    clean_detail = normalize_detail(feature, detail)
-    return clean_detail
-
-
 def plain_manual_text(text: str) -> str:
     value = text
     replacements = {
@@ -63,27 +58,10 @@ def plain_feature_name(name: str) -> str:
     return value.strip() or "核心功能"
 
 
-def normalize_detail(feature: str, detail: str) -> str:
-    value = plain_manual_text(detail or "").strip()
-    value = re.sub(rf"^{re.escape(feature)}(模块|功能)?用于", "", value)
-    value = re.sub(rf"^{re.escape(feature)}主要用于", "", value)
-    value = re.sub(r"^主要用于", "", value)
-    value = re.sub(rf"^{re.escape(feature)}[：:，, ]*", "", value)
-    value = re.sub(rf"^用户使用{re.escape(feature)}时，可以", "", value)
-    value = re.sub(rf"^进入{re.escape(feature)}后，用户可以", "", value)
-    value = re.sub(rf"^在{re.escape(feature)}中，用户可以", "", value)
-    value = re.sub(rf"^用户通过{re.escape(feature)}可以", "", value)
-    value = re.sub(rf"^在{re.escape(feature)}环节，用户可以", "", value)
-    value = re.sub(rf"^通过{re.escape(feature)}，用户可以", "", value)
-    value = value.strip("。；; ，,")
-    if not value or value == feature:
-        value = "支撑软件中的相关业务处理，帮助用户完成信息查看、内容填写、结果确认或资料维护"
-    return value + ("。" if not value.endswith("。") else "")
-
-
 TECHNICAL_TERMS = [
     "技术实现",
-    "代码",
+    "代码实现",
+    "源码结构",
     "框架",
     "接口封装",
     "状态管理",
@@ -347,11 +325,6 @@ def normalize_glossary(business: dict[str, Any] | None, modules: list[dict[str, 
         "STOP_FOR_USER\n"
         "NEXT_ACTION: 业务理解缺少 `glossary`。请根据当前软件真实业务对象和页面术语补全术语表后再生成操作手册。"
     )
-
-
-def feature_phrase(modules: list[dict[str, Any]], limit: int = 5) -> str:
-    names = [module["feature"] for module in modules if module.get("feature")]
-    return "、".join(names[:limit]) if names else "主要业务处理"
 
 
 def chinese_number(value: int) -> str:

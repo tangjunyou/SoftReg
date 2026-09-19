@@ -7,8 +7,8 @@ import argparse
 from pathlib import Path
 from typing import Any
 
-from common import COPYRIGHT_CODE_EXTS, FRONTEND_EXTS, ensure_dir, is_known_config_file, iter_project_files, read_json, rel, write_json
-from extract_code_material import LINES_PER_PAGE, SPLIT_THRESHOLD_PAGES, category_weight, material_code_lines, should_skip_file
+from common import CODE_MAX_COLUMNS, FRONTEND_EXTS, ensure_dir, iter_source_files, rel, write_json
+from extract_code_material import LINES_PER_PAGE, SPLIT_THRESHOLD_PAGES, category_weight, material_code_lines
 
 
 DEFAULT_MAX_FILES = 0
@@ -38,7 +38,7 @@ def evidence_for(path: Path, project: Path) -> str:
 
 
 def build_candidates(project: Path) -> list[dict[str, Any]]:
-    files = [p for p in iter_project_files(project, COPYRIGHT_CODE_EXTS) if not should_skip_file(p) and not is_known_config_file(p)]
+    files = list(iter_source_files(project))
     files.sort(key=lambda p: category_weight(p, project))
     candidates: list[dict[str, Any]] = []
     for path in files:
@@ -101,7 +101,7 @@ def write_selection_md(path: Path, data: dict[str, Any]) -> None:
         "",
         "1. 模型根据项目业务和代码入口选择最能体现软件功能的文件。",
         "2. 把需要抽取的文件设为 `selected: true`，并填写 `model_reason`。",
-        "3. 代码材料按完整文件抽取并去除纯空行，不支持只抽取某个文件的中间行段。",
+        f"3. 代码材料按完整文件抽取并去除纯空行；超过 {CODE_MAX_COLUMNS} 显示列的源码行会确定性折行，不支持只抽取某个文件的中间行段。",
         "4. 用户确认模型选择后，再记录 `code-selection` 门禁。",
         "",
         "## 默认选中文件",
@@ -161,7 +161,7 @@ def main() -> None:
         "supplement_rule": "模型优先选择能体现软件核心功能和真实运行逻辑的源码；不足60页时再从其他相关源码中补充；候选源码仍不足时才生成全部代码材料。",
         "confirmation_stage": "code-selection",
         "next_action": "请由模型填写 草稿/代码文件选择.json 的抽取选择和选择理由，再让用户确认；确认后运行 confirm_stage.py --stage code-selection。",
-        "instructions": "The script only inventories source files. The model must choose selected/model_reason before user confirmation. Selected files are extracted in full with blank-only lines removed.",
+        "instructions": "The script only inventories source files. The model must choose selected/model_reason before user confirmation. Selected files are extracted in full with blank-only lines removed and long lines wrapped to deterministic physical lines.",
         "files": candidates,
     }
     write_json(out_dir / "代码文件选择.json", data)

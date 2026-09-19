@@ -239,6 +239,12 @@ def main() -> None:
     ap.add_argument("--version", required=True)
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
+    from common import final_confirmation_issue
+    manual_path = Path(args.manual).resolve()
+    workdir = manual_path.parent.parent if manual_path.parent.name == "草稿" else manual_path.parent
+    issue = final_confirmation_issue(workdir)
+    if issue:
+        raise SystemExit("STOP_FOR_USER\nNEXT_ACTION: " + issue)
 
     out = Path(args.out)
     info = build(out, Path(args.manual),

@@ -21,9 +21,9 @@ if [ ! -d .venv ]; then
   "$PY" -m venv .venv
 fi
 
-.venv/bin/pip install --quiet --disable-pip-version-check reportlab pypdfium2 python-docx pillow pypdf
+.venv/bin/pip install --quiet --disable-pip-version-check reportlab pypdfium2 pillow pypdf
 .venv/bin/python - <<'EOF'
-import reportlab, pypdfium2, docx, PIL
+import reportlab, pypdfium2, PIL
 from pathlib import Path
 print("deps OK | reportlab", reportlab.Version)
 for kind, paths in {

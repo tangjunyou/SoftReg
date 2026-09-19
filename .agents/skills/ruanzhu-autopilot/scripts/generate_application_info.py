@@ -257,6 +257,25 @@ def humanize_feature(name: str) -> str:
     return mapping.get(key, value.title() if re.search(r"[A-Za-z]", value) else value)
 
 
+def total_source_line_count(analysis: dict[str, Any], manifest: dict[str, Any]) -> int | str:
+    source = analysis.get("source") if isinstance(analysis.get("source"), dict) else {}
+    value = source.get("total_line_count") or source.get("line_count")
+    if value:
+        return int(value)
+    fallback = manifest.get("source_line_count") or manifest.get("selected_source_line_count")
+    return int(fallback) if fallback else "待用户确认"
+
+
+def submitted_code_page_count(manifest: dict[str, Any]) -> int | str:
+    value = manifest.get("submitted_page_count")
+    if value:
+        return int(value)
+    total = manifest.get("total_pages")
+    if not total:
+        return "待用户确认"
+    return 60 if manifest.get("mode") == "front30_back30" else int(total)
+
+
 def build_fields(
     analysis: dict[str, Any],
     manifest: dict[str, Any],
@@ -278,7 +297,7 @@ def build_fields(
         "软件全称": software_name_hint,
         "软件简称": "",
         "版本号": version_hint,
-        "软件分类": (business.get("software_category") or "应用软件") if business else "应用软件",
+        "软件分类": (business.get("software_category") if business else None) or "待用户确认（应用软件/嵌入式软件/中间件/操作系统 四选一）",
         "开发完成日期": "待用户确认（YYYY-MM-DD）",
         "开发方式": (business.get("development_situation") or "单独开发") if business else "单独开发",
         "软件说明": "原创",
@@ -294,12 +313,12 @@ def build_fields(
         "该软件的运行平台 / 操作系统": infer_runtime_os(analysis),
         "软件运行支撑环境 / 支持软件": infer_runtime_support(analysis, project),
         "编程语言": language,
-        "源程序量": str(manifest.get("source_line_count") or manifest.get("selected_source_line_count") or "待用户确认"),
-        "开发目的": (business.get("application_purpose") or f"待用户确认（≤50字符，需说明开发目的，不能只写软件名称）") if business else "待用户确认（≤50字符，需说明开发目的，不能只写软件名称）",
+        "源程序量": str(total_source_line_count(analysis, manifest)),
+        "开发目的": (business.get("application_purpose") or "待用户确认（≤50字符，需说明开发目的，不能只写软件名称）") if business else "待用户确认（≤50字符，需说明开发目的，不能只写软件名称）",
         "面向领域 / 行业": (business.get("industry") or "待用户确认") if business else "待用户确认",
         "软件的主要功能": (business.get("main_functions") or summarize_features(analysis, software_name, business)) if business else summarize_features(analysis, software_name, business),
         "软件的技术特点": (business.get("technical_characteristics") or f"系统采用{framework_text}构建前端界面，结合模块化组件、路由组织、接口封装和状态管理实现业务功能") if business else f"系统采用{framework_text}构建前端界面，结合模块化组件、路由组织、接口封装和状态管理实现业务功能",
-        "页数": str(manifest.get("total_pages") or "待用户确认"),
+        "页数": str(submitted_code_page_count(manifest)),
     }
     defaults.update({k: v for k, v in answers.items() if v})
 
@@ -646,7 +665,8 @@ def write_application_md(path: Path, fields: dict[str, str], analysis: dict[str,
             f"- 框架：{'、'.join(analysis.get('frameworks') or []) or '未识别'}",
             f"- 源码文件数：{analysis.get('source', {}).get('total_file_count', analysis.get('source', {}).get('file_count', 0))}",
             f"- 源程序量（含空行）：{analysis.get('source', {}).get('total_line_count', analysis.get('source', {}).get('line_count', 0))}",
-            f"- 代码材料页数：{manifest.get('total_pages', 0)}",
+            f"- 已选源码估算总页数：{manifest.get('total_pages', 0)}",
+            f"- 实际提交代码材料页数：{submitted_code_page_count(manifest)}",
             f"- 代码输出模式：{manifest.get('mode', '')}",
             f"- 业务理解：{'已读取 草稿/业务理解.json' if business else '未提供，使用项目分析兜底'}",
             "",

@@ -9,7 +9,7 @@ description: >
   操作手册、著作权登记、R11、软著提交、软著补正、下证 等任何相关意图时都必须使用本 skill，
   即使用户没有明确说"用 skill"。
 compatibility: >
-  Python 3.10+（推荐项目 .venv）；依赖 reportlab、pypdfium2、python-docx、Pillow。
+  Python 3.10+（推荐项目 .venv）；依赖 reportlab、pypdfium2、Pillow。
   首次使用运行 scripts/setup_env.sh 或按 环境检查 手动建 venv。
 allowed-tools: Bash, Read, Write, Edit, Glob, Grep, WebSearch, WebFetch
 metadata:
@@ -44,7 +44,7 @@ metadata:
 首次使用时检查并创建 venv（项目根 `.venv`）：
 
 ```bash
-bash ${SKILL_DIR}/scripts/setup_env.sh   # 无则按 python3 -m venv .venv && .venv/bin/pip install reportlab pypdfium2 python-docx pillow pypdf
+bash ${SKILL_DIR}/scripts/setup_env.sh   # 无则按 python3 -m venv .venv && .venv/bin/pip install reportlab pypdfium2 pillow pypdf
 ```
 
 之后所有脚本统一用 `.venv/bin/python` 执行。缺字体（Courier New / CJK TTF）时停下告知用户。
@@ -81,17 +81,7 @@ bash ${SKILL_DIR}/scripts/setup_env.sh   # 无则按 python3 -m venv .venv && .v
 
 模型阅读证据（README、路由、页面、接口、必要源码）后产出业务理解模型稿（字段口径见 `references/business_understanding_rules.md`），再带 `--model-context` 重跑生成 `草稿/业务理解.md`。**门禁 `business`**：用户确认行业、目标用户、核心功能、申请口径后才继续。
 
-### 步骤 4 · 申请表字段
-
-```bash
-.venv/bin/python ${SKILL_DIR}/scripts/generate_application_info.py \
-  --analysis ... --code-manifest ... --business-context 软件著作权申请资料/草稿/业务理解.json \
-  --software-name "<软件全称>" --version "V1.0" --out-dir 软件著作权申请资料/草稿
-```
-
-字段口径、字符硬约束（50/100/500~1300）见 `references/application_fields.md`。**门禁 `application-fields`**：用户补全硬件/系统环境、著作权人、日期并确认。软件全称与版本号一经确认即全局唯一口径。
-
-### 步骤 5 · 代码文件选择
+### 步骤 4 · 代码文件选择
 
 ```bash
 .venv/bin/python ${SKILL_DIR}/scripts/propose_code_selection.py \
@@ -100,7 +90,7 @@ bash ${SKILL_DIR}/scripts/setup_env.sh   # 无则按 python3 -m venv .venv && .v
 
 模型阅读候选清单后填写 `草稿/代码文件选择.json`（selected/model_reason，可选 start_line/end_line），选择规则见 `references/code_selection_rules.md`。**门禁 `code-selection`**：用户确认后记录。
 
-### 步骤 6 · 代码鉴别材料 PDF（单文件、页数精确）
+### 步骤 5 · 代码鉴别材料 PDF（单文件、页数精确）
 
 ```bash
 .venv/bin/python ${SKILL_DIR}/scripts/build_code_pdf.py \
@@ -109,7 +99,18 @@ bash ${SKILL_DIR}/scripts/setup_env.sh   # 无则按 python3 -m venv .venv && .v
   --out 软件著作权申请资料/正式资料/代码鉴别材料.pdf
 ```
 
-行为：非空行 ≥3120 走前 30 页 + 后 30 页（页码连续 1–60）；不足则全部提交模式。字号/行距按最差页自适应（7pt/11pt → 6pt/8pt 阶梯），装不下会 WARN 并建议剔除超长行文件。输出 `代码鉴别材料.pdf.manifest.json` 记录每个文件的行段与页范围——最后一行必须是完整语句（闭合的 `}` 或 `return`），不闭合时回到步骤 5 调整选择。
+行为：非空行 ≥3120 走前 30 页 + 后 30 页（页码连续 1–60）；不足则全部提交模式。字号/行距按最差页自适应（7pt/13pt → 6.5pt/9pt 阶梯），装不下会 WARN 并建议剔除超长行文件。输出 `代码鉴别材料.manifest.json` 记录每个文件的行段与页范围——最后一行必须是完整语句（闭合的 `}` 或 `return`），不闭合时回到代码选择步骤调整选择。
+
+### 步骤 6 · 申请表字段
+
+```bash
+.venv/bin/python ${SKILL_DIR}/scripts/generate_application_info.py \
+  --code-manifest 软件著作权申请资料/正式资料/代码鉴别材料.manifest.json \
+  --business-context 软件著作权申请资料/草稿/业务理解.json \
+  --software-name "<软件全称>" --version "V1.0" --out-dir 软件著作权申请资料/草稿
+```
+
+字段口径、字符硬约束（50/100/500~1300）见 `references/application_fields.md`。**门禁 `application-fields`**：用户补全硬件/系统环境、著作权人、日期并确认；页数以 `代码鉴别材料.manifest.json` 为唯一来源。软件全称与版本号一经确认即全局唯一口径。
 
 ### 步骤 7 · 操作手册草稿 + 人工润色
 
@@ -148,7 +149,7 @@ bash ${SKILL_DIR}/scripts/setup_env.sh   # 无则按 python3 -m venv .venv && .v
 .venv/bin/python ${SKILL_DIR}/scripts/pdf_check.py --pdf 软件著作权申请资料/正式资料/代码鉴别材料.pdf \
   --software-name "<软件全称>" --version "V1.0" --expect-pages 60
 .venv/bin/python ${SKILL_DIR}/scripts/pdf_check.py --pdf 软件著作权申请资料/正式资料/操作手册.pdf \
-  --software-name "<软件全称>" --version "V1.0"
+  --software-name "<软件全称>" --version "V1.0" --doc-type manual
 ```
 
 任一 FAIL 停下修复。全过后写 `正式资料/生成报告.md`（模式、页数、布局、体检结果、用户润色回合、遗留风险）与 `申请表信息.txt`。然后引导进入 Phase 2。

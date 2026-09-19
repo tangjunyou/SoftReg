@@ -42,6 +42,31 @@ def page_rows(text: str) -> list[str]:
     return [ln for ln in re.split(r"[\r\n]+", text) if ln.strip()]
 
 
+def baseline_row_count(page) -> int | None:
+    """Count visual rows by clustering character baseline y-coordinates.
+
+    Text-layer newline heuristics merge or split lines depending on the pdfium
+    build and line spacing; geometry is the ground truth for row density.
+    Returns None when char boxes are unavailable so callers can fall back.
+    """
+    try:
+        textpage = page.get_textpage()
+        total = textpage.count_chars()
+        if total <= 0:
+            return None
+        bottoms = sorted(textpage.get_charbox(i)[1] for i in range(total))
+    except Exception:
+        return None
+    rows = 0
+    prev = None
+    tolerance = 3.0
+    for y in bottoms:
+        if prev is None or y - prev > tolerance:
+            rows += 1
+            prev = y
+    return rows
+
+
 def render_is_blank(page) -> bool:
     img = page.render(scale=0.5).to_pil().convert("L")
     hist = img.histogram()
@@ -90,7 +115,8 @@ def check(pdf_path: Path, software_name: str, version: str,
             problems.append(f"第 {page_no} 页页眉缺少「{header_needle}」。")
         if f"第 {page_no} 页" not in flat:
             problems.append(f"第 {page_no} 页页码不是「第 {page_no} 页」（页码须连续且与实际张数一致）。")
-        body_rows = len(rows) - 1  # header line itself doesn't count
+        geometric = baseline_row_count(page)
+        body_rows = (geometric - 1) if geometric is not None else len(rows) - 1  # minus header row
         if doc_type == "code":
             if body_rows < MIN_ROWS_CODE and page_no != n:
                 problems.append(f"第 {page_no} 页仅 {body_rows} 行（含折行），低于每页 {MIN_ROWS_CODE} 行要求。")

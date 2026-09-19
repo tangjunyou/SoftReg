@@ -45,9 +45,11 @@ PAGE_SOURCE_LINES = 52          # rows per page incl. File markers -> >=50 real 
 FRONT_PAGES = 30
 BACK_PAGES = 30
 # (font_size, line_spacing) combos from comfortable to cramped; first fit wins.
+# Keep spacing >= 12pt whenever possible: tighter leading can make pdfium's
+# text layer merge/split lines, and inspectors that trust newlines miscount.
 LAYOUT_CANDIDATES = [
-    (7.0, 11.0), (7.0, 10.5), (7.0, 10.0), (7.0, 9.5), (7.0, 9.0),
-    (6.5, 9.0), (6.5, 8.5), (6.0, 8.0),
+    (7.0, 13.0), (7.0, 12.5), (7.0, 12.0), (7.0, 11.5),
+    (7.0, 11.0), (7.0, 10.5), (7.0, 10.0), (6.5, 9.0),
 ]
 WRAP_INDENT = "    "            # continuation indent for soft-wrapped display rows
 
@@ -261,6 +263,10 @@ def main() -> None:
     ap.add_argument("--front-pages", type=int, default=FRONT_PAGES)
     ap.add_argument("--back-pages", type=int, default=BACK_PAGES)
     args = ap.parse_args()
+    from common import final_confirmation_issue
+    issue = final_confirmation_issue(Path(args.selection).resolve().parent.parent)
+    if issue:
+        raise SystemExit("STOP_FOR_USER\nNEXT_ACTION: " + issue)
 
     register_fonts()
     project = Path(args.project).resolve()

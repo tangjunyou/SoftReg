@@ -9,7 +9,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from common import COPYRIGHT_CODE_EXTS, FRONTEND_EXTS, count_text_lines, is_known_config_file, iter_project_files, normalize_title, read_json, read_text, rel, write_json
+from common import FRONTEND_EXTS, count_text_lines, iter_source_files, normalize_title, read_json, read_text, rel, write_json
 
 
 DEPENDENCY_FRAMEWORKS = {
@@ -135,7 +135,7 @@ def summarize_readme(project: Path) -> str:
 def analyze(project: Path) -> dict[str, Any]:
     project = project.resolve()
     package, package_path = load_package(project)
-    source_files = [p for p in iter_project_files(project, COPYRIGHT_CODE_EXTS) if not is_known_config_file(p)]
+    source_files = list(iter_source_files(project))
     frontend_files = [p for p in source_files if p.suffix.lower() in FRONTEND_EXTS]
     class_counts: Counter[str] = Counter()
     extension_counts: Counter[str] = Counter()
@@ -208,32 +208,6 @@ def analyze(project: Path) -> dict[str, Any]:
     }
 
 
-def infer_workdir(out: Path) -> Path:
-    if out.parent.name == "analysis":
-        return out.parent.parent
-    return out.parent
-
-
-def check_environment_gate(out: Path) -> None:
-    workdir = infer_workdir(out)
-    env_path = workdir / "环境检查.json"
-    if not env_path.exists():
-        return
-    env = read_json(env_path)
-    if not env.get("requires_user_input"):
-        return
-    confirmation_path = workdir / "环境确认.json"
-    confirmed = False
-    if confirmation_path.exists():
-        confirmed = bool(read_json(confirmation_path).get("environment_confirmed"))
-    if not confirmed:
-        raise SystemExit(
-            "STOP_FOR_USER\n"
-            "NEXT_ACTION: 完整 DOCX 环境未确认。请先让用户选择安装完整环境或使用基础 DOCX 兜底继续，"
-            "然后运行 `python3 <SKILL_DIR>/scripts/confirm_stage.py --workdir 软件著作权申请资料 --stage environment --note \"<用户选择>\"`。"
-        )
-
-
 def infer_language(extension_counts: Counter[str], frameworks: list[str]) -> str:
     langs: list[str] = []
     if extension_counts.get(".ts") or extension_counts.get(".tsx"):
@@ -241,6 +215,16 @@ def infer_language(extension_counts: Counter[str], frameworks: list[str]) -> str
     if extension_counts.get(".js") or extension_counts.get(".jsx"):
         langs.append("JavaScript")
     language_by_ext = {
+        ".c": "C",
+        ".cc": "C++",
+        ".cpp": "C++",
+        ".cxx": "C++",
+        ".dart": "Dart",
+        ".gd": "GDScript",
+        ".gml": "GameMaker Language",
+        ".h": "C/C++",
+        ".hh": "C++",
+        ".hpp": "C++",
         ".py": "Python",
         ".java": "Java",
         ".go": "Go",
@@ -346,7 +330,6 @@ def main() -> None:
         raise SystemExit(f"Project not found: {project}")
 
     out = Path(args.out)
-    check_environment_gate(out)
     result = analyze(project)
     write_json(out, result)
     print(f"OK analysis: {out}")

@@ -6,13 +6,69 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timezone
 from pathlib import Path
+import re
 from typing import Any
 
-from common import read_json, write_json
+from common import (
+    confirmation_is_current,
+    confirmation_payload_sha256,
+    draft_completeness_issues,
+    draft_snapshot,
+    file_sha256,
+    read_json,
+    write_json,
+)
 
 
 MAIN_FUNCTION_MIN_CHARS = 500
 MAIN_FUNCTION_MAX_CHARS = 1300
+SCREENSHOT_METHODS = {"agent-browser", "agent-desktop", "user-supplied", "skip"}
+DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+FIELD_LIMITS = {
+    "开发的硬件环境": 50,
+    "运行的硬件环境": 50,
+    "开发该软件的操作系统": 50,
+    "软件开发环境 / 开发工具": 50,
+    "该软件的运行平台 / 操作系统": 50,
+    "软件运行支撑环境 / 支持软件": 50,
+    "开发目的": 50,
+    "面向领域 / 行业": 50,
+    "软件的技术特点": 100,
+    "编程语言": 120,
+}
+ENUM_FIELDS = {
+    "软件分类": {"应用软件", "嵌入式软件", "中间件", "操作系统"},
+    "开发方式": {"单独开发", "合作开发", "委托开发", "下达任务开发"},
+    "软件说明": {"原创", "修改（含翻译软件、合成软件）"},
+    "发表状态": {"已发表", "未发表"},
+    "权利范围": {"全部权利", "部分权利"},
+    "权利取得方式": {"原始取得", "继受取得"},
+}
+REQUIRED_FIELDS = (
+    "软件全称",
+    "版本号",
+    "软件分类",
+    "开发完成日期",
+    "开发方式",
+    "软件说明",
+    "发表状态",
+    "著作权人",
+    "权利范围",
+    "权利取得方式",
+    "开发的硬件环境",
+    "运行的硬件环境",
+    "开发该软件的操作系统",
+    "软件开发环境 / 开发工具",
+    "该软件的运行平台 / 操作系统",
+    "软件运行支撑环境 / 支持软件",
+    "编程语言",
+    "源程序量",
+    "开发目的",
+    "面向领域 / 行业",
+    "软件的主要功能",
+    "软件的技术特点",
+    "页数",
+)
 
 
 def timestamp() -> str:
@@ -29,6 +85,7 @@ def write_confirmation(path: Path, data: dict[str, Any], key: str, note: str) ->
     data[key] = True
     data["confirmation_note"] = note
     data["confirmed_at"] = timestamp()
+    data["confirmed_content_sha256"] = confirmation_payload_sha256(data)
     write_json(path, data)
 
 
@@ -55,6 +112,10 @@ def application_field_issues(md_path: Path) -> list[str]:
     if not md_path.exists():
         return issues
 
+    for field_name in REQUIRED_FIELDS:
+        if not application_field_value(md_path, field_name):
+            issues.append(f"➤{field_name}：不能为空。")
+
     main_function = application_field_value(md_path, "软件的主要功能")
     if not main_function:
         issues.append("➤软件的主要功能：缺少填写内容，请填写 500~1300 字。")
@@ -68,7 +129,41 @@ def application_field_issues(md_path: Path) -> list[str]:
             issues.append(
                 f"➤软件的主要功能：当前 {count} 字，超过 {MAIN_FUNCTION_MAX_CHARS} 字，请精简至 500~1300 字。"
             )
+    for field_name, allowed in ENUM_FIELDS.items():
+        value = application_field_value(md_path, field_name)
+        if value and "待用户确认" not in value and value not in allowed:
+            issues.append(f"➤{field_name}：值“{value}”不在允许范围内（{'/'.join(sorted(allowed))}）。")
+    for field_name in ("开发完成日期", "首次发表日期"):
+        value = application_field_value(md_path, field_name)
+        if value and "待用户确认" not in value:
+            try:
+                if not DATE_RE.fullmatch(value):
+                    raise ValueError
+                datetime.strptime(value, "%Y-%m-%d")
+            except ValueError:
+                issues.append(f"➤{field_name}：必须是有效的 YYYY-MM-DD 日期。")
+    if application_field_value(md_path, "发表状态") == "已发表" and not application_field_value(md_path, "首次发表日期"):
+        issues.append("➤首次发表日期：发表状态为“已发表”时必须填写。")
+    for field_name, limit in FIELD_LIMITS.items():
+        value = application_field_value(md_path, field_name)
+        if value and "待用户确认" not in value and len(value) > limit:
+            issues.append(f"➤{field_name}：当前 {len(value)} 字符，超过 {limit} 字符限制。")
+    for field_name in ("源程序量", "页数"):
+        value = application_field_value(md_path, field_name)
+        if value and "待用户确认" not in value and (not value.isdigit() or int(value) <= 0):
+            issues.append(f"➤{field_name}：必须填写大于 0 的纯数字。")
     return issues
+
+
+def current_confirmation_issue(path: Path, label: str) -> str | None:
+    if not path.exists():
+        return f"{label}尚未确认"
+    data = read_json(path)
+    if not data.get("user_confirmed"):
+        return f"{label}尚未确认"
+    if not confirmation_is_current(data):
+        return f"{label}在确认后已被修改，请重新确认"
+    return None
 
 
 def confirm_environment(workdir: Path, note: str) -> Path:
@@ -121,15 +216,22 @@ def parse_screenshot_method(method: str, note: str) -> str:
     value = (method or note or "").lower()
     if any(key in value for key in ("skip", "no-screenshot", "none", "不截图", "跳过", "暂不", "先不", "不要截图", "无需截图")):
         return "skip"
-    if any(key in value for key in ("chrome", "devtools", "mcp")):
-        return "chrome-devtools"
-    if any(key in value for key in ("computer", "use", "电脑", "桌面")):
-        return "computer-use"
-    if any(key in value for key in ("user", "manual", "self", "手动", "自己", "用户")):
+    if any(key in value for key in (
+        "computer-use", "computer use", "computeruse", "desktop", "桌面控制", "桌面操作", "桌面",
+    )):
+        return "agent-desktop"
+    if any(key in value for key in (
+        "chrome-devtools", "devtools", "mcp", "browser", "浏览器", "playwright",
+        "playwright-cli", "自动截图", "自动", "agent",
+    )):
+        return "agent-browser"
+    if any(key in value for key in (
+        "user-supplied", "user_supplied", "用户自行", "自行截图", "手动", "自己", "user", "manual", "self",
+    )):
         return "user-supplied"
     raise SystemExit(
         "STOP_FOR_USER\n"
-        "NEXT_ACTION: 请明确截图方式：chrome-devtools、computer-use、user-supplied 或 skip。"
+        "NEXT_ACTION: 请明确截图方式：agent-browser（浏览器自动）、agent-desktop（桌面控制）、user-supplied（用户自行截图）或 skip。"
     )
 
 
@@ -143,7 +245,8 @@ def confirm_screenshot_method(workdir: Path, note: str, method: str) -> Path:
 
 
 def confirm_application_fields(workdir: Path, note: str) -> Path:
-    issues = application_field_issues(workdir / "草稿/申请表信息.md")
+    md_path = workdir / "草稿/申请表信息.md"
+    issues = application_field_issues(md_path)
     if issues:
         raise SystemExit(
             "STOP_FOR_USER\n"
@@ -152,7 +255,11 @@ def confirm_application_fields(workdir: Path, note: str) -> Path:
         )
     out_path = workdir / "草稿/申请表字段确认.json"
     data = load_json_or_empty(out_path)
+    data["application_md_sha256"] = file_sha256(md_path)
     write_confirmation(out_path, data, "application_fields_confirmed", note)
+    txt_path = workdir / "正式资料/申请表信息.txt"
+    txt_path.parent.mkdir(parents=True, exist_ok=True)
+    txt_path.write_text(md_path.read_text(encoding="utf-8"), encoding="utf-8")
     return out_path
 
 
@@ -163,17 +270,26 @@ def confirm_markdown(workdir: Path, note: str) -> Path:
     screenshot = workdir / "截图方式确认.json"
     fields = workdir / "草稿/申请表字段确认.json"
 
-    if not business.exists() or not read_json(business).get("user_confirmed"):
-        issues.append("业务理解尚未确认")
-    if not selection.exists() or not read_json(selection).get("user_confirmed"):
-        issues.append("代码文件选择尚未确认")
+    business_issue = current_confirmation_issue(business, "业务理解")
+    if business_issue:
+        issues.append(business_issue)
+    selection_issue = current_confirmation_issue(selection, "代码文件选择")
+    if selection_issue:
+        issues.append(selection_issue)
     if not screenshot.exists() or not read_json(screenshot).get("screenshot_method_confirmed"):
         issues.append("截图方式尚未确认")
+    elif read_json(screenshot).get("screenshot_method") not in SCREENSHOT_METHODS:
+        issues.append("截图方式已失效，请重新选择 浏览器自动截图、桌面控制截图、用户自行截图或跳过截图")
     if not fields.exists() or not read_json(fields).get("application_fields_confirmed"):
         issues.append("申请表字段尚未确认")
+    else:
+        app_md = workdir / "草稿/申请表信息.md"
+        if not app_md.exists() or read_json(fields).get("application_md_sha256") != file_sha256(app_md):
+            issues.append("申请表信息在确认后已被修改，请重新确认")
     field_issues = application_field_issues(workdir / "草稿/申请表信息.md")
     if field_issues:
         issues.append("申请表信息仍有字段未满足要求")
+    issues.extend(draft_completeness_issues(workdir))
 
     if issues:
         raise SystemExit(
@@ -184,6 +300,7 @@ def confirm_markdown(workdir: Path, note: str) -> Path:
 
     out_path = workdir / "草稿/最终生成确认.json"
     data = load_json_or_empty(out_path)
+    data["draft_file_sha256"] = draft_snapshot(workdir)
     write_confirmation(out_path, data, "markdown_confirmed", note)
     return out_path
 
@@ -207,7 +324,7 @@ def main() -> None:
     parser.add_argument("--note", default="用户已确认")
     parser.add_argument(
         "--method",
-        choices=["chrome-devtools", "computer-use", "user-supplied", "skip"],
+        choices=sorted(SCREENSHOT_METHODS),
         help="Screenshot capture method when --stage screenshot-method",
     )
     args = parser.parse_args()
